@@ -14,3 +14,5 @@ Vince's web site: http://www.offshore.com.ai/vince/
 Vince in Wikipedia: https://en.wikipedia.org/wiki/Vince_Cate
 
 Critical Connection review in A.N.A.L.O.G. magazine 1986-02: https://archive.org/details/analog-computing-magazine-39/page/n112/mode/1up
+
+![picture of the floppy disk](disk.jpg)
