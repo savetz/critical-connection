@@ -9,6 +9,8 @@ The .MAC and .LIB files are for the CP/M side. The .ASM files are for the Atari 
 
 My interview with Vince: https://www.youtube.com/watch?v=5xfe-CJ6BM0
 
+Critical Connection manual: https://archive.org/details/the-critical-connection-manual
+
 Vince's web site: http://www.offshore.com.ai/vince/
 
 Vince in Wikipedia: https://en.wikipedia.org/wiki/Vince_Cate
