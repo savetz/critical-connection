@@ -1,0 +1,280 @@
+
+
+
+	 ;;The setbaud routine will be hear and destroy
+	 ;; the next few lines which are not needed any
+	 ;; longer
+
+IMINSTAL: LXI	H,0
+	DAD	SP
+	SHLD	CPMSTACK
+	LXI	SP,STACKTOP
+	CALL	IPRINT
+	DB CR,LF
+	DB CR,LF,'COPYRIGHT (C) 1982 by Vincent Cate'
+	DB CR,LF
+ DB CR,LF,'I need to know some information about the port'
+ DB CR,LF,'the ATARI will plug into so that I can use it.'
+ DB CR,LF,'This serial port will be called the ATARI port.'
+ DB CR,LF
+ DB CR,LF,'Is your ATARI port NORMAL in that it is used with'
+ DB CR,LF,'the IN and OUT commands or simple memory read'
+ DB CR,LF,'and write commands with possibly a CMA? (Y/N) ',0
+	CALL	INITKEY
+ 	CALL	GETCHAR
+	CPI	'N'
+	JZ	WEIRD
+	CALL	GETTYPE
+	STA	ATARITBL+4
+	CALL	IPRINT
+ DB CR,LF,LF,'Enter the STATUS PORT location for port. ',0
+	CALL	GETHL
+	SHLD	ATARITBL
+	CALL	IPRINT
+ DB CR,LF,LF,'Enter the byte to test for RECEIVE. ',0
+	CALL	GETHEX
+	STA	ATARITBL+2
+	CALL	IPRINT
+ DB CR,LF,LF,'Enter the byte to test for SEND.',0
+	CALL	GETHEX
+	STA	ATARITBL+3
+	CALL	IPRINT
+ DB CR,LF,LF,'Enter the location of the ATARI data port.',0
+	CALL	GETHL
+	SHLD	ATARITBL+5
+
+
+	CALL	IPRINT
+HOWSET: DB CR,LF,LF,LF
+	DB 'Is the baud rate of the ATARI port set by '
+	DB CR,LF,'hardware or software? (H or S) ',0
+	CALL	GETCHAR
+	CPI	'H'
+	JZ	ISHARD
+	CPI	'S'
+	JNZ	HOWSET	;; Should have been either a H or S
+			;; Set by program
+	MVI	A,0CDH	;; CD = CALL ----
+	STA	100H
+	LXI	H,IMINSTAL
+	SHLD	101H	;; Now insted of jumping to install it
+			;; sets the baud rate
+
+;; What we will be doing is just creating a sequence of machine
+;; code instructions to place the bytes at the locations
+;; we are told to
+;; The way this will be accomplished is to do a bunch of
+;;				MVI	A,--
+;;				STA	----
+;;	or if real port then	OUT	--
+;;
+;;	note that HL = IMINSTAL	this is where routinte will be
+;;
+;;DATA:	EQU	$	;; The end after install
+			;; This is where the PRINTER BUFFER
+			;; will begin.
+DATA:	LDA	ATARITBL+4
+	ANI	1
+	JNZ	SOFTMAP	;; 1 is Mem map port
+	CALL	IPRINT	;; port address
+	DB CR,LF,LF,LF,'You should want me to send some bytes'
+	DB CR,LF,'to certain port numbers. I will want the '
+	DB CR,LF,'byte and then the port number.  After you'
+	DB CR,LF,'have entered all bytes and ports, enter 00'
+	DB CR,LF,'for a port and I will know you are done.',0
+SOFTLOOP: MVI	M,3EH	;; 3E = MVI A,--
+	INX	H
+	CALL	IPRINT
+	DB	CR,LF,LF,'Enter the next byte: ',0
+	CALL	GETHEX
+	MOV	M,A	;;	fill in the blank in MVI A,--
+	INX	H
+	MVI	M,0D3H	;; D3 = OUT --
+	CALL	IPRINT
+	DB	CR,LF,'Enter the next port or 00 to stop: ',0
+	CALL	GETHEX
+	CPI	0
+	JZ	SETRET
+	INX	H	;; now high order or second
+	MOV	M,A	;; set high order
+	INX	H	;; point to empty
+	JMP	SOFTLOOP
+
+SOFTMAP: CALL	IPRINT
+ DB CR,LF,LF,LF,'You should want me to send some bytes'
+ DB CR,LF,'to certain addresses. I will want the '
+ DB CR,LF,'byte and then the address. After you'
+ DB CR,LF,'have entered all bytes and addresses, enter 00'
+ DB CR,LF,'for a address and I will know you are done.',0
+SOFML:	MVI	M,3EH	;; 3E = MVI A,--
+	INX	H
+	CALL	IPRINT
+	DB	CR,LF,LF,'Enter the next byte: ',0
+	CALL	GETHEX
+	MOV	M,A	;;	fill in the blank in MVI A,--
+	INX	H
+	MVI	M,32H	;; S2 = STA ----
+	CALL	IPRINT
+	DB CR,LF,'Enter the next address or 00 to stop: ',0
+	CALL	GETHEX
+	CPI	0
+	JZ	SETRET
+	INX	H	;;pointing to low order byte of address
+	INX	H	;; now high order or second
+	MOV	M,A	;; set high order
+	DCX	H
+	CALL	GETHEX
+	MOV	M,A	;; set low order
+	INX	H	;; point to high
+	INX	H	;; point to empty
+	JMP	SOFML
+
+SETRET:	DCX	H	;; Wip out data byte
+	DCX	H	;; wipe out MVI A,
+	MVI	M,0C9H	;; C9 = RET	
+	JMP	NEEDCMA
+
+GETHL:	CALL	IPRINT
+ DB CR,LF,'Enter 4 hex digits for location of port.'
+ DB CR,LF,'For a port number put 00 after 2 digit port num ',0
+	CALL	GETHEX
+	MOV	L,A
+	CALL	GETHEX
+	MOV	H,A
+	RET
+
+GETTYPE: CALL	IPRINT
+	DB CR,LF,LF
+ DB 'Enter P for port that is used with IN and OUT'
+ DB CR,LF,'and M if it is a memory location. ',0
+	CALL	GETCHAR
+	CPI	'P'
+	JZ	PTYPE
+	CPI	'M'
+	JZ	MTYPE
+	JMP	GETTYPE
+PTYPE:	MVI	C,0
+	JMP	GOTPM	;; skip next line
+MTYPE:	MVI	C,1
+GOTPM:	CALL	IPRINT
+ DB CR,LF,'After I do an AND of the status for this port will'
+ DB CR,LF,'the port be busy if 0 or busy if NOT 0. '
+ DB CR,LF,'Enter Z if busy when zero and N if when not zero'
+ DB 0
+	CALL	GETCHAR
+	CPI	'Z'
+	JZ	BUSYZ
+	CPI	'N'
+	JZ	BUSYN
+	JMP	GOTPM
+BUSYZ:	MVI	A,0
+	JMP	SUMPMZN	;; SKIP NEXT LINE
+BUSYN:	MVI	A,2
+SUMPMZN: ADD	C
+	RET
+
+ISHARD:	MVI	A,0	;; 0 = NOP
+	STA	100H
+	STA	101H
+	STA	102H
+
+NEEDCMA: CALL	IPRINT
+	DB CR,LF,'A few ports do not have hardware inverters'
+	DB CR,LF,'and need software to invert the bits with'
+	DB CR,LF,'the CMA instruction. If your ATARI data port'
+	DB CR,LF,'needs this enter Y else hit N ',0
+	CALL	GETCHAR
+	CPI	'N'
+	JZ	PRINTP	;; Now for printer port
+	CPI	'Y'
+	JZ	ADDCMAS
+	JMP	NEEDCMA
+
+ADDCMAS: MVI	A,2FH	;; Let A=CMA command
+	STA	NOPN1
+	STA	NOPN2
+
+PRINTP:	CALL	IPRINT
+ DB CR,LF,LF,LF,LF
+ DB CR,LF,'Is the list status supported by your BIOS?'
+ DB CR,LF,'If you do not know, and have not tried installing'
+ DB CR,LF,'this before answer Y for Yes. If you have tried and'
+ DB CR,LF,'it did not work or you know it will not, answer N'
+ DB CR,LF,'for No. ',0
+	CALL	GETCHAR
+	CPI	'Y'
+	JZ	GOODBIOS
+	CPI	'N'
+	JNZ	PRINTP
+	CALL	IPRINT
+ DB CR,LF,LF,'Now I need information about your printer port.'
+ DB 0
+	CALL	GETTYPE
+	STA	PRINTTBL+4
+	CALL	IPRINT
+ DB CR,LF,LF,'Now the location of the printer STATUS PORT.',0
+	CALL	GETHL
+	SHLD	PRINTTBL
+	CALL	IPRINT
+ DB CR,LF,LF,'Enter the byte to check if ready to send. ',0
+	CALL	GETHEX
+	STA	PRINTTBL+3
+	JMP	ALLDONE
+
+GOODBIOS: LHLD	1	;; WARM BOOT=4A03+b
+	LXI	D,2DH-3	;; 4A2D-4A03+b=list stat
+	DAD	D
+;;	LHLD	6	;; (6 and 7)=BDOS=3C00+b
+;;	LXI	D,4A2DH-3C00H ;; List status is at 4A2D+b
+;;	DAD	D
+	SHLD	PSTAT+1	;; change jump
+
+ALLDONE: CALL	IPRINT
+ DB CR,LF,'Is this to run at 2mhz, 4mhz or Other? (2,4,or O) '
+ DB 0
+	CALL	GETCHAR
+	CPI	'2'	
+	JZ	DONEMHZ	;; set to 2 already
+	CPI	'4'
+	JZ	MHZ4
+	CPI	'O'
+	JZ	WEIRDMHZ
+	JMP	ALLDONE
+MHZ4:	MVI	A,34	;;17*2
+	STA	DLYL1+1
+	JMP	DONEMHZ
+WEIRDMHZ: CALL	IPRINT
+ DB CR,LF,'If 11H (17D) is the right delay for a 2mhz computer'
+ DB CR,LF,'and 22H (34D) is the right delay for a 4mhz system'
+ DB CR,LF,'enter the HEX number for a delay on your system',0
+	CALL	GETHEX
+	STA	DLYL1+1
+DONEMHZ: CALL	IPRINT
+ DB	CR,LF,'Now save installed version to disk by typing'
+	DB	CR,LF,' SAVE ',0
+	LXI	H,DATA
+	MOV	A,H
+	MVI	B,-1
+ADON2:	INR	B
+	SUI	10
+	JNC	ADON2
+	ADI	10
+	MOV	C,A
+	MOV	A,B
+	ADI	'0'
+	CALL	PUTCHAR
+	MOV	A,C
+	ADI	'0'
+	CALL	PUTCHAR
+	CALL	IPRINT
+	DB	' ATARI.COM',CR,LF,0
+	CALL	MAKEREAL	;; ******** may be changed
+	LHLD	CPMSTACK
+	SPHL
+	RET	
+
+CPMSTACK: DW 0000
+
+
+
+

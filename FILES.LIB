@@ -1,0 +1,183 @@
+
+FILEMACS MACRO		
+
+FCB EQU 5CH
+
+GETDNUM PUSH B ! PUSH D ! PUSH H
+	MVI	C,25
+	CALL	BIOS
+	STA	DISKNUM
+	POP H ! POP D ! POP B
+	RET
+
+DISKNUM DB 1
+			;;
+ZERROFCB PUSH B ! PUSH H	
+	LXI	H,FCB	;;
+	MVI	C,36	;; This will clear 0 to 35 in FCB
+ZFCBL	MVI	M,0	;;
+	DCR	C	;;
+	JNZ	ZFCBL	;;
+	POP	H ! POP B
+	RET		;;
+			;;
+CLOSE	PUSH	B ! PUSH D !	PUSH H
+	LXI	D,FCB	;;
+	MVI	C,16	;;
+	CALL	BIOS	;;
+	CALL	OKNOFF?	;;
+	MVI	A,0	;;
+	STA	TYPEOPEN	;;
+	CALL	FSTATREP	;;
+	POP	H ! POP D ! POP B
+	RET		;;
+DELETE	PUSH	B ! PUSH D !	PUSH H
+	LXI	D,FCB	;;
+	MVI	C,19	;;
+	CALL	BIOS	;;
+	POP	H ! POP D ! POP B
+	RET		;;
+			;;
+WRITEB	PUSH	B ! PUSH D !	PUSH H
+	LDA	TYPEOPEN	;;
+	ANI	1	;;
+	JZ	NOTMYTYP	;;
+	MVI	C,21	;;
+	LXI	D,FCB	;;
+	CALL	BIOS	;; Write sequentialy next 128 bytes
+	CALL	OK0?	;;
+	MVI	A,1	;;
+	STA	TYPEOPEN	;;
+	CALL	FSTATREP	;;
+	POP	H ! POP D ! POP B
+	RET		;;
+READB	PUSH	B ! PUSH D !	PUSH H
+	LDA	TYPEOPEN	;;
+	ANI	2	;; Could have 2 and 1 bit on
+	JZ	NOTMYTYP	;;
+	MVI	C,20	;;
+	LXI	D,FCB	;;
+	CALL	BIOS	;; READ sequentialy next 128 bytes
+	CALL	OK0?	;;
+	MVI	A,2	;;
+	STA	TYPEOPEN	;;
+		CALL	FSTATREP	;;
+	POP	H ! POP D ! POP B
+	RET		;;
+
+FSTATREP LDA	TYPEOPEN	
+	CPI	2
+	JZ	READING
+	CPI	1 
+	JZ	WRITING
+	CPI	3 
+	JZ	OPENING
+	JMP	CLOSING
+REPS	EQU	$
+	IF DEBUGS
+	CALL	PRINT	;; DE point to message
+	LDA	FCB+32	;;
+	CALL	PUTHEX	;;
+	ENDIF
+	RET		;;
+
+READING LXI	D,IREAD
+	JMP	REPS
+WRITING LXI	D,IWRITE
+	JMP	REPS
+CLOSING LXI	D,ICLOSE
+	JMP	REPS
+OPENING LXI	D,IOPEN
+	JMP	REPS
+IREAD	DB CR,LF,'Reading $'
+IWRITE	DB CR,LF,'Writing $'
+ICLOSE	DB CR,LF,'Closing $'
+IOPEN	DB CR,LF,'Opening $'
+
+INITFILE PUSH	B ! PUSH D !	PUSH H
+	MVI	C,13	;;
+	CALL	BIOS	;; SET buffer to 80H
+	MVI	C,14
+	LDA	DISKNUM
+	MOV	E,A	;;	WE WILL USE THE DISK THAT WAS LOGED
+	CALL	BIOS	;;	in when the program started
+	POP	H ! POP D ! POP B
+	RET		;;
+OPEN	PUSH	B ! PUSH D !	PUSH H
+	LXI	D,FCB	;;
+	MVI	C,15	;;
+	CALL	BIOS	;;
+	CALL	OKNOFF?	;;
+	MVI	A,0	;;	
+	STA	FCB+32	;; Set pointer to first record in file
+	MVI	A,3	;; READ OR WRITE
+	STA	TYPEOPEN
+	CALL	FSTATREP
+	MVI	A,'G'	;; Status is all Go
+	STA	FSTATS
+	POP	H ! POP D ! POP B
+	RET		;;
+
+NOTMYTYP CALL	IPRINT	;;
+	DB	CR,LF,'File not opened correctly for this type'
+	DB	CR,LF,'of access. Type of open is ',0
+	LDA	TYPEOPEN	;;
+	CALL	PUTHEX	;;
+	JMP	HEARDWRG
+
+TYPEOPEN	DB	0	;; No files open to start with
+			;;
+CLEARFCB PUSH	H ! PUSH B	
+	MVI	C,11	;;
+	LXI	H,FCB+1	;;
+CFCBL	MVI	M,' '	;;
+	INX	H	;;
+	DCR	C	;;
+	JNZ	CFCBL	;;
+	POP	B ! POP H	
+	RET		;;
+			;;
+MAKEFILE	PUSH	B ! PUSH D !	PUSH H
+	LXI	D,FCB	;;
+	MVI	C,22	;;
+	CALL	BIOS	;;
+	CALL	OKNOFF?	;;
+	POP	H ! POP D ! POP B
+	RET		;;
+OKNOFF?	CPI	255	;; OK IF NOT FFH
+	JZ	ERR	;; IS THERE AN ERROR
+	RET		;; NO
+OK0?	CPI	0	;;
+	RZ		;; NO ERROR
+	CPI	1
+	JNZ	ERR
+	CALL	IPRINT	;;
+	DB	CR,LF,' Tried to read past end of file. ',0
+	CALL	FSTATREP	
+FERROR	MVI	A,'E'
+	STA	FSTATS	;; file status is in trouble
+	JMP	HEARDWRG
+FSTATS	DB	'G'
+
+ERR	CALL	PUTHEX	;; PRINT A
+	CALL	IPRINT	;;
+	DB	' was the A reg after file error occured',CR,LF,0
+	CALL	FSTATREP
+	JMP	FERROR
+
+INTOBUF PUSH	B ! PUSH D !	PUSH H
+	LXI	H,80H	;; FILE BUFFER
+	MVI	C,128
+INBUFL	LDAX	D	;; POINTER TO DATA WAS IN D
+	MOV	M,A	;; INTO BUFFER
+	INX	D	;;
+	INX	H	;;
+	DCR	C	;;
+	JNZ	INBUFL	;;
+	POP	H ! POP D ! POP B
+	RET		;;
+			;;
+	ENDM
+
+
+

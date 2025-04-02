@@ -1,0 +1,231 @@
+
+PMACS MACRO
+
+NONEWB	NOP		;; This gets made into a return is we
+			;; are sending everything to disk
+	LHLD	NUMLEFT	;; number left	in buffer
+	MOV	A,L	;; This is a subroutine because
+	ORA	H	;; allfull calls it as well as gethi
+	JNZ	NOTEMPTY
+	LXI	H,DATA	;; Empty
+	SHLD	ENDBUF	;; Reset to begining of buffer space
+	SHLD	NEXTCHAR ;; Reset to begining of buffer space
+	RET 
+;;	JMP	GET2HI
+
+NOTEMPTY LHLD	NEXTCHAR
+	MOV	A,M	;; Get the next character
+	INX	H
+	SHLD	NEXTCHAR
+	LHLD	NUMLEFT
+	DCX	H
+	SHLD	NUMLEFT
+STRIPPER ANI	0FFH	;; Strip off high bit when 7FH
+	MOV	E,A	;; But not when FFH
+	MVI	C,5
+	CALL	BIOS
+	RET
+;;	JMP	GET2HI
+
+;;*************************************************************
+;; Above is the get a byte out of buffer and print it stuff
+;; The actual printing is done as time allows and printer ready
+;; Bellow is the get 40 characters into buffer stuff.
+;;*************************************************************
+
+ALLFULL CALL	NONEWB
+	LDA	NEXTCHAR+1
+	LXI	H,DATA
+	SUB	H	;; A=NEXTCHAR-DATA high bytes only
+	JNZ	NOTFULL
+	LDA	NEXTCHAR
+	SUB	L
+	CPI	80
+	JC	ALLFULL
+NOTFULL LHLD	NUMLEFT
+	MOV	B,H
+	MOV	C,L
+	LHLD	NEXTCHAR
+	LXI	D,DATA
+	CALL	BMOVER
+	LXI	H,DATA
+	SHLD	NEXTCHAR
+	LHLD	NUMLEFT
+	LXI	D,DATA
+	DAD	D
+	SHLD	ENDBUF
+	JMP	ROOMLEFT
+		
+
+
+PRINTER CALL	GETA	;; What does it want the printer to do?
+	CALL	ADDCHKSM
+	CPI	53H
+	JZ	PSTATUS	;; give computer a status report
+	CPI	57H
+	JZ	APRINT	;; We get a line to print
+	JMP	GETHI	;; There are only 2 print commands
+
+APRINT	CALL	EAT3	;; 2 dumby bytes and a checksum
+	CALL	ACK	;; ACKnoledge
+ 	MVI	B,40	;; Sends 40 characters, plus a checksum
+	LXI	H,LINEBUF ;; Pointer to the current line buffer
+	XRA	A
+	STA	CHECKSUM
+	STA	NEWCHARS	;; number of new characters in LINEBUF
+	LDA	SIZELINE
+	STA	TMPSIZEL
+	MVI	C,0	;; C will be the number of CR-LF pairs
+	CALL	BPEAT
+	CALL	ACK
+	IF DEBUGS
+	CALL	IPRINT
+	DB ' Another line ',0
+	ENDIF
+	LHLD	ENDBUF
+	LDA	NEWCHARS
+	MOV	E,A
+	MVI	D,0
+	DAD	D
+	XCHG
+	LHLD	TOPMEM	;; (LHLD 6) - 80
+	CALL	CMPHLDE
+JTOFULL	JC	ALLFULL	;; This may be  changed to JC RALLFULL
+			;; and back by the D command
+ROOMLEFT LHLD	ENDBUF
+	XCHG
+	LXI	H,LINEBUF
+	LDA	NEWCHARS
+	MOV	C,A
+	MVI	B,0
+	CALL	BMOVER	
+	LDA	NEWCHARS
+	MOV	E,A
+	IF DEBUG2
+	CALL	PUTHEX	;***************
+	ENDIF
+	MVI	D,0
+	LHLD	NUMLEFT
+	DAD	D
+	SHLD	NUMLEFT
+	LHLD	ENDBUF
+	DAD	D
+	SHLD	ENDBUF
+	LDA	TMPSIZEL
+	STA	SIZELINE
+	MVI	C,'C'	;; C for commplete
+	CALL	PUTC	;; Send complete
+ 	JMP	GETHI	;; It sends a command for each line
+
+BPEAT	CALL	GETA
+	CALL	ADDCHKSM
+	CPI	9BH	;; EOL
+	JZ	SPIT
+	MOV	M,A	;;	Put byte into data bank
+	INX	H	;; Now pointing to next empty space
+	CPI	CR	;; could not do it earlyer because
+	JNZ	NOTEOL	;; we may have wanted to destroy 9BH
+	PUSH	PSW
+	XRA	A
+	STA	TMPSIZEL	;; 0 on the line
+	POP	PSW
+
+NOTEOL	CPI	20H	;; printable chars greater than 19H
+	JC	NONPRINT
+	LDA	TMPSIZEL
+	INR	A
+	STA	TMPSIZEL
+	CPI	80	;; FULL LINE?
+RECNO80 JNZ	NONPRINT ;; When diverting do not split lines**
+	CALL	ADDCRLF
+NONPRINT LDA	NEWCHARS
+	INR	A
+	STA	NEWCHARS
+	DCR	B
+	JNZ	BPEAT	;; Loop for at most 40 
+	CALL	GETA	;; Checksum from the atari
+	MOV	E,A	;; 
+	LDA	CHECKSUM	;; Calculated checksum
+	CMP	E	;; Checksums match?
+	JNZ	HEARDWRG ;; Abort if not same
+	SHLD	TMPENDBF
+ 	RET
+
+SPIT	CALL	ADDCRLF
+	SHLD	TMPENDBF
+SPIT2	DCR	B	;;ATARI padds lines to 40 characters
+	JZ	ISPSUMOK	;;IS Printer checkSUM OK?
+	CALL	GETA
+	CALL	ADDCHKSM
+	JMP	SPIT2
+
+ISPSUMOK CALL	GETA
+	MOV	C,A	;; Checksum it sent
+	LDA	CHECKSUM	;; The checksum we calculated
+	CMP	C	;; Checksums match?
+	JNZ	HEARDWRG	;; Abort if not same
+	RET
+
+ADDCRLF	MVI	M,CR
+	INX	H
+	MVI	M,LF
+	INX	H
+	XRA	A	;; let A=0
+	STA	TMPSIZEL ;; Number of characters on line.
+	LDA	NEWCHARS
+	INR	A
+	INR	A	;; 2 new characters but replacing 9B 
+	STA	NEWCHARS
+	RET		;;
+			;;
+TMPSIZEL DB	0
+TMPENDBF DW	0000
+			;;
+PSTATUS	CALL	EAT3	;; 2 dumby bytes and a checksum
+	CALL	ACK	;;
+	LXI	D,PSTATMSG
+	CALL	SENDSTR	;; We say we are a printer
+	JMP	GETHI	;; After a status command is print comd
+			;;
+BMOVER	INR	B
+BMOVER2 MOV	A,M
+	STAX	D
+	INX	H
+	INX	D
+	DCR	C
+	JNZ	BMOVER2
+	DCR	B
+	JNZ	BMOVER2
+	RET
+
+CMPHLDE	MOV	A,H	; sets as if	HL-DE had been done
+	CMP	D
+	RNZ	
+	MOV	A,L
+	CMP	E
+	RET
+			;;
+SIZEMEM LHLD	6
+	MOV	A,L
+	SUI	80
+	JNC	NOBORRO	;; if L is greater than 80 no borrow
+	DCR	H	;; Borrow	
+NOBORRO	MOV	L,A
+	SHLD	TOPMEM	;; TOPLEM = (6)-80
+	RET
+			;; The next 3 lines are 2 byte pointers
+NUMLEFT DW	0	;;Number left in buffer to print
+ENDBUF	DW	DATA	;;Points to where next chars in will go
+NEXTCHAR DW	DATA	;;Points to NEXT CHARacter to print
+			;;
+SIZELINE DB	0	;; Number of characters on line so far
+			;;
+PSTATMSG DB	'C',0,0,0FFH,0,0FFH,'$'
+
+NEWCHARS DB	0	;; Number of characters in next 80 byte
+LINEBUF DS 80		;; REALLY ONLY NEEDED TO BE 40 + FEW
+
+TOPMEM	DS	2	;; (LHLD 6) - 80 = TOP of user memory
+
+ ENDM
+

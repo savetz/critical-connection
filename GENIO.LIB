@@ -1,0 +1,142 @@
+
+IOMACS MACRO
+
+;; This is to be a general perpose set of I/O routines.
+;; They will work against a table of data about a port that
+;; looks like the following
+;;
+;;	name	bytes	use/meaning
+;; ------------------------------------------------------------
+;;	locstat	 2	location of status. May only use 1 byte
+;; ------------------------------------------------------------
+;;	input	 1	is "anded" with status to check input
+;; ------------------------------------------------------------
+;;	output	1	is anded with status to check output
+;; ------------------------------------------------------------
+;;	typeport 1  0 = Port, 1 = Mem, + 2 if loop when bit on
+;; ------------------------------------------------------------
+;;	locport	2	location of port. May only use 1 byte
+;; ------------------------------------------------------------
+;;
+;; All 4 routines will be passed the address of the first byte
+;; of the table in the HL register
+;; The user will jump to one of the following 4 routines.
+;; INPUT	-	returns a byte in the a reg
+;; OUPUT	-	sends the byte in the a reg
+;; STATIN	-	returns a 0 if need to loop
+;; STATOUT -	returns a 0 if need to loop
+;;
+
+;; JUMP TABLE FOR PATCHING BY WIERD PORTS SUCH AS OSBORNE
+
+
+PSTAT	JMP	GPSTAT
+ASTATIN	JMP	GASTATIN
+ASTATOUT JMP	GSTATO
+AIN	JMP	GAIN
+AOUT	JMP	GAOUT
+
+
+GPSTAT	LXI	H,PRINTTBL
+	JMP	STATOUT
+GASTATIN LXI	H,ATARITBL
+	JMP	STATIN
+GSTATO	LXI	H,ATARITBL
+	JMP	STATOUT
+GAOUT	LXI	H,ATARITBL+4
+	JMP	OUTPUT
+GAIN	LXI	H,ATARITBL+4
+			;; JMP	INPUT ****
+
+
+INPUT	MOV	A,M	;; HL points to type of port
+	INX	H	;; which is table+4
+	ANI	1
+	JZ	PORTIN
+	MOV	D,M
+	INX	H
+	MOV	E,M
+	LDAX 	D	;; Port address
+	RET
+PORTIN 	MOV	A,M
+	STA	PINNUM+1 ;; Cange where IN from on next line
+PINNUM	IN	'P'	;; Changes on the fly by previous line
+	RET
+
+OUTPUT	PUSH	PSW
+	MOV	A,M
+	INX	H
+	ANI	1
+	JZ	PORTOUT
+	MOV	D,M
+	INX	H
+	MOV	E,M
+	POP	PSW	;; The A reg is what this was all about
+	STAX 	D
+	RET
+PORTOUT MOV	A,M
+	STA	POUTNUM+1 ;; Cange where OUT is to 2 lines down
+	POP	PSW
+POUTNUM	OUT	'P'	;; Changes on the fly by previous line
+	RET
+
+STATIN 	MOV	D,M	;;FIRST BYTE OF STATUS ADDRESS
+	INX	H	;;
+	MOV	E,M	;; SECOND.	SO DE=STATUS ADDRESS
+	INX	H	;; POINTIN TO INPUT BYTE FOR ANDINS
+	MOV	C,M	;;	C = BYTE TO BE ANDED
+	INX	H	;; POINTING TO OUTPUT BYTE FOR ANDING
+	INX	H	;; POINTING TO TYPE OF PORT
+			;; 4 way branch in next 6 lines
+	MOV	A,M	;; TYPE OF PORT
+	SUI	1	;; Was a 0,1,2, OR 3
+	JC	PSTAT0	;; Was a 0. So Port with 0 = loop
+	JZ	MSTAT0	;; Was a 1. So Mem with 0 = loop
+	DCR	A
+	JZ	PSTAT1	;; Was a 2. So Port with 1 = loop
+			;; Was a 3. So Mem with 1 = loop
+	LDAX	D	;; D POINTING TO STATUS PORT
+	CMA		;; Invert all bits
+	ANA 	C	;;
+	RET		;;
+			;;
+STATOUT MOV	D,M	;;FIRST BYTE OF STATUS ADDRESS
+	INX	H	;;
+	MOV	E,M	;; SECOND.	so DE = STATUS ADDRESS
+	INX	H	;; POINTIN TO INPUT BYTE FOR ANDING
+	INX	H	;; POINTING TO OUTPUT BYTE FOR ANDING
+	MOV	C,M	;;	C = BYTE TO BE ANDED
+	INX	H	;; POINTING TO TYPE OF PORT
+			;; 4 way branch in next 6 lines
+	MOV	A,M	;; TYPE OF PORT
+	SUI	1	;; Was a 0,1,2, OR 3
+	JC	PSTAT0	;; Was a 0. So Port with 0 = loop
+	JZ	MSTAT0	;; Was a 1. So Mem with 0 = loop
+	DCR	A
+	JZ	PSTAT1	;; Was a 2. So Port with 1 = loop
+			;; Was a 3. So Mem with 1 = loop
+	LDAX	D	;; D POINTING TO STATUS PORT
+	CMA		;; Invert bits
+	ANA 	C	;;
+	RET
+			;; **** used by both statin and statout
+MSTAT0	LDAX	D	;; D POINTING TO STATUS PORT
+	ANA 	C
+	RET
+
+PSTAT1 MOV	A,D	;; Status port number
+	STA	PSTAT1P+1 ;; CHANGER
+PSTAT1P IN	0	;; CHANGES
+	CMA
+	ANA 	C
+	RET
+
+PSTAT0	MOV	A,D
+	STA	PSTATP0+1 ;; CHANGER
+PSTATP0 IN	0	;; CHANGES
+	ANA 	C
+	RET
+
+	ENDM
+
+

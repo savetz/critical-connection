@@ -1,0 +1,65 @@
+
+
+
+WEIRD:	MVI	A,0CDH	;; CD = CALL ----
+	STA	100H
+	LXI	H,IMINSTAL
+	SHLD	101H	;; Now insted of jumping to install it
+			;; sets the baud rate
+	MVI	M,0C9H	;; RET IF HE DOES NOTHIN
+	CALL	IPRINT
+ DB CR,LF,'You will have to install this using DDT.'
+ DB CR,LF,'The adress of the jumps in the I/O jump table'
+ DB CR,LF,'are as follows.'
+ DB CR,LF,'ATARI STATUS INPUT return 0 in A for not ready - ',0
+	LXI	H,ASTATIN
+	CALL	PUTHL
+	CALL	IPRINT
+ DB CR,LF,'ATARI STATUS OUTPUT return 0 in A if not ready - ',0
+	LXI	H,ASTATOUT
+	CALL	PUTHL
+	CALL	IPRINT
+ DB CR,LF,'ATARI INPUT return byte in A. For example the two'
+ DB CR,LF,'instructions "IN addr", and "RET" - ',0 
+	LXI	H,AIN
+	CALL	PUTHL
+	CALL	IPRINT
+ DB CR,LF,'ATARI OUTPUT send what is in a A. For example the '
+ DB CR,LF,'two instructions "OUT addr", and "RET" - ',0
+	LXI	H,AOUT
+	CALL	PUTHL
+	CALL	IPRINT
+ DB CR,LF,'INITIALIZE ATARI PORT and SET BAUD RATE TO 19,200 -'
+	DB	' ',0
+	LXI	H,IMINSTAL
+	CALL	PUTHL
+	CALL	IPRINT
+ DB CR,LF,'You should change the jump at these locations to'
+ DB CR,LF,'jump to the apropriate subroutine.'
+ DB CR,LF,'These subroutines can be in the memory from ',0
+	LXI	H,IMINSTAL
+	CALL	PUTHL
+	CALL	IPRINT
+	DB	' to ',0
+	LXI	H,DATA-1
+	CALL	PUTHL
+	LXI	H,IMINSTAL+1
+	LXI	D,IMINSTAL+2
+	LXI	B,DATA-IMINSTAL
+	MVI	M,0	;; Zero the first and move it to rest
+	CALL	BMOVER	;; So it is obviously spare memory
+	CALL	IPRINT
+ DB CR,LF,LF,'Is your printer status normal? (Y/N)',0
+	CALL	GETCHAR
+	CPI	'Y'
+	JZ	PRINTP
+	CALL	IPRINT
+ DB CR,LF,LF,'PRINTER STATUS returns 0 in A if not ready - ',0
+	LXI	H,PSTAT
+	CALL	PUTHL
+
+	JMP	ALLDONE
+
+
+
+

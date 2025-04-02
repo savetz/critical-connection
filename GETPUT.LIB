@@ -1,0 +1,155 @@
+
+
+THE128S MACRO
+			;;
+GET128	CALL	EAT3	;; "GET 128" bytes from atari
+	CALL	ACK	;;
+	CALL	RECBUF
+	CALL	INKEY	;; SCAN KEYBOARD
+	LDA	DAUX2	;; These 128 bytes may have a filename
+	CPI	'O'	;; O = OPEN
+	JZ	AOPEN	;; lets open a file
+	CPI	'C'
+	JZ	ACLOSE
+	CALL	WRITEB	;; WRITE BUFFER (128 BYTES) TO CPM DISK
+	MVI	C,'C'	;; send complete
+	CALL	PUTC
+	JMP	GETHI
+
+RECBUF 	LXI	H,80H	;; buffer adress
+	MVI	E,128	;; 128 bytes
+	XRA	A	;; checksum 0 to start with
+	STA	CHECKSUM ;; The check sum goes here
+	CALL	EAT	;; put the next 128 bytes into buffer
+	CALL	GETA	;; sent checksum
+	MOV	B,A	;;
+	LDA	CHECKSUM ;; calculated checksum
+	CMP	B	;;checksum it sent = cksum calculated ?
+	JNZ	HEARDWRG ;;jump to HEARD WRONG if not
+	CALL	ACK	;; all is ok
+	RET
+
+EAT	CALL	GETA
+	MOV	M,A
+	INX	H
+	CALL	ADDCHKSM	
+	DCR	E
+	JNZ	EAT
+	RET
+			;;
+SEND128 CALL	EAT3
+	LDA	DAUX2	;;either 0,O,C,or X for boot,open,close
+	CPI	0	;; or not open=read+-
+	JZ	REBOOTN
+	LDA	FSTATS	;; We may not want to talk
+	CPI	'G'
+	JNZ	HEARDWRG ;; If not Go then tell ATARI error
+REBOOTN	CALL	ACK	;; If jumped to here will boot so we
+			;; do not care if there were errors
+	LDA	DAUX2	;;either 0,O,C,or X for boot,open,close
+	CPI	0	;; or not open=read+-
+	JNZ	NOBOOT
+	LDA	AUTOBOOT ;; Does the atari want my boot
+	CPI	'E'	;; Enabled
+	JNZ	NOBOOT	
+	LDA	DAUX1
+	CPI	6	;;1 to 3 or 1 to 5 are boot sectors
+			;; If result is 0 or positive no boot
+	JNC	NOBOOT
+	MVI	C,'C'
+	CALL	PUTC	;; This may not be the place to do this
+	JMP	SBOOT	;; Send the boot sector
+
+NOBOOT	LDA	DAUX1
+	LXI	H,LASTAUX1 ;; What number was there last time
+	CMP	M	;; Has it changed?
+			;; If same then this is a a retry
+	CNZ	READB	;; Get a NEW sector off the cpm file
+	CALL	INKEY	;; SCAN KEYBOARD
+	MVI	C,'C'
+	CALL	PUTC
+	CALL	SENDBUF
+	LDA	DAUX1
+	STA	LASTAUX1 ;; For next time
+ 	JMP	GETHI
+
+SENDBUF LXI	H,80H	;; Where cpm puts a sector
+	XRA	A	;; the check sum is 0
+	STA	CHECKSUM ;;	so far
+	MVI	D,128	;; 128 BYTES
+S128LOOP MOV	A,M
+	CALL	ADDCHKSM ;; COMPUTE THE CHECK SUM
+	MOV	C,A	;; we are going to send the C
+	CALL	PUTC	;; I told you we would send it
+	INX	H	;;
+	DCR	D	;; only 128 now
+	JNZ	S128LOOP
+	LDA	CHECKSUM
+	MOV	C,A
+	CALL	PUTC	;; send the check sum
+	RET
+
+AUTOBOOT DB	'E'	;;
+			;;
+AOPEN	CALL	ZERROFCB ;; zero the values like sector number
+	CALL	CLEARFCB ;; put spaces where the file name goes
+	LXI	H,80H	;; NAME IS IN THE DISK BUFFER
+	LXI	D,FCB+1	;; PUT NAME IN FCB
+	CALL	MOVENAME ;;
+	CALL	CAPNAME
+;;	MVI	M,'$'	;; V:FILENAME.TYP$
+;;	CALL	IPRINT
+;;	DB	CR,LF,'Opening ',0
+;;	LXI	D,80H	;;
+;;	CALL	PRINT	;; deisplay filename on CPM screen
+	CALL	INITFILE ;;
+	MVI	C,17	;; DOES FILE EXIST?
+	LXI	D,FCB	;;
+	CALL	BIOS	;;
+	CPI	255	;;
+	JNZ	ITEXIST	;; 255 = NO MATCH SO NOT 255 = EXISTS
+	CALL	MAKEFILE
+ITEXIST	CALL	OPEN	;;
+	MVI	A,0	;;This changes to make sure new sector
+	STA	LASTAUX1 ;; is wanted with each atari read
+	MVI	C,'C'	;; send complete
+	CALL	PUTC	;;
+	JMP	GETHI	;;
+			;;
+MOVENAME MOV	A,M	;;
+	INX	H	;;
+	CPI	':'	;; Scan for a colen
+	JZ	MNAMEL0	;; Move name loop
+	MOV	A,L	;;
+	CPI	10	;; worst case is ENTER "V:--------.---
+	JZ	HEARDWRG ;; no colen so send NAK
+	JMP	MOVENAME
+MNAMEL0 MVI	C,10
+MNAMEL 	DCR	C
+	JZ	MVERR
+	MOV	A,M	;;
+	CPI	9BH	;; Atari end of line
+	RZ		;; Return if end of line
+	INX	H	;;
+	CPI	2EH	;; Atari period
+	JZ	FILETYPE ;;
+	STAX	D	;;
+	INX	D	;;
+	JMP	MNAMEL	;;
+FILETYPE LXI	D,FCB+9	;;
+	MVI	C,5	;; .TYP+9BH+1
+	JMP	MNAMEL	;;
+
+MVERR	CALL	IPRINT
+	DB CR,LF,'WARNING BAD FILENAME recieved!!'
+	DB CR,LF,'I will use part of it.',0
+	INX	H
+	RET
+	
+LASTAUX1 DB 0		;; Used to see if it wants a new secto
+			;; or last one again when ATARI reads
+			;; from CPM
+
+	ENDM
+
+

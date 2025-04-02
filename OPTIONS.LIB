@@ -1,0 +1,230 @@
+
+MMENU MACRO
+
+STOSTRIP DB CR,LF,'S -- Strip off high bit when printing.$'
+STOSTOP  DB CR,LF,'S -- stop Stripping off high bit when printing.$'
+VFORVIRT DB CR,LF,'V -- Virtual atari disk.$'
+VFORCOMP DB CR,LF,'V -- end Virtual mode or change file used.$'
+
+DTODIV	 DB CR,LF,'D -- Divert printer output to a file.$'
+DTOSTOP  DB CR,LF,'D -- stop Diverting printer output.$'
+
+KFORCPM	 DB CR,LF,'K -- have ATARI use CPM Keyboard.$'
+KFORATR	 DB CR,LF,'K -- have ATARI use ATARI keyboard.$'
+
+MENUPCH CALL	GETCHAR
+MENU	CALL	IPRINT
+;; DB CR,LF,LF,LF,'O to Open a file to be booted into ATARI'
+;; DB CR,LF,'C to Close the current file and enable boot'
+;; DB CR,LF,'E to Erase a file'
+ DB CR,LF,LF,LF,'X -- eXit to system'
+ DB CR,LF,'N -- No command. Go back to serving ATARI with no changes.'
+ DB CR,LF,'L -- change Loged disk drive',0
+	LXI	D,DTODIV
+	LDA	ISRECON
+	CPI	'N'
+	JZ	PRINDD
+	LXI	D,DTOSTOP
+PRINDD	CALL	PRINT
+	LDA	STRIPPER+1 ; Toggle STRIPper
+	LXI	D,STOSTRIP
+	CPI	0FFH
+	JZ	PRINSS	;; 
+	LXI	D,STOSTOP
+PRINSS	CALL	PRINT
+	LXI	D,VFORCOMP
+	LDA	ISVON
+	CPI	'Y'
+	JZ	PRINVV
+	LXI	D,VFORVIRT
+PRINVV	CALL	PRINT
+	LXI	D,KFORCPM
+	LDA	ISKEYON
+	CPI	'N'
+	JZ	PRINKK
+	LXI	D,KFORATR
+PRINKK	CALL	PRINT
+	CALL	IPRINT
+	DB CR,LF,'Enter a command: ',0
+	CALL	GETCHAR
+
+;;	CPI	'O'
+;;	JZ	MANOPEN		;; Manual open
+;;	CPI	'C'
+;;	JZ	MANCLOSE	;; Manual close
+	CPI	'D'
+	JZ	DHIT
+;;	CPI	'E'
+;;	JZ	MANERA		;; Manual erase
+	CPI	'N'
+	JZ	ISERVATR	;; Back to Normal
+	CPI	'T'
+	JZ	TCHECKER	;; Total checksum errors
+	CPI	'X'
+	JZ	EXIT		;; EXIT TO CPM
+	CPI	'L'
+	JZ	LOGGER
+	CPI	'S'
+	JZ	TSTRIP	;; Toggle STRIPper
+	CPI	'V'
+	JZ	VERTUAL
+	CPI	'K'
+	JZ	ONKEYBD
+	CPI	'Z'
+	JZ	DISPALL
+	IF HOME
+	CPI	'7'
+	JNZ	MENU
+	RST	7
+	ENDIF
+	CALL	IPRINT
+ DB CR,LF,LF,'That is not a command. Try again.',0
+	JMP	MENU
+
+DHIT	LDA	ISRECON
+	CPI	'Y'		;;
+	JZ	NORMPRIN	;; Not to disk
+	JMP	DISKPRIN	;; Printer output to disk
+
+
+DISPALL CALL	IPRINT
+ DB CR,LF,'Port to console. When ATARI is turned on should be '
+ DB CR,LF,'some "1S"s',0
+DISPALLL CALL	ASTATIN
+	CPI	0
+ 	JZ	DISPALLL
+	CALL	AIN
+	IF HOME
+	CMA
+	PUSH	PSW
+	LHLD	CURSOR
+	LXI	D,0EC00H
+	CALL	CMPHLDE
+	JC	NEXTSPC
+	LXI	H,0E800H-1
+NEXTSPC INX	H
+	SHLD	CURSOR
+	POP	PSW
+	MOV	M,A
+	JMP	DISPALLL
+CURSOR  DW 	0E800H
+	ENDIF
+	CALL	PUTCHAR
+	JMP	DISPALLL
+			;;
+;;MANOPEN CALL	GETNAME	;; Get a file name from console to FCB
+;;	CALL	CRLF	;;
+;;	CALL	INITFILE ;;
+;;	MVI	C,17	;; DOES FILE EXIST?
+;;	LXI	D,FCB	;;
+;;	CALL	BIOS	;;
+;;	CPI	255	;;
+;;	JNZ	MITEXIST ;; 255 = NO MATCH, SO NOT 255 = EXISTS
+;;	CALL	DELETE	;; Yes I know, but it does not hurt
+;;	CALL	MAKEFILE	;;
+;;MITEXIST CALL	OPEN	;;
+;;	MVI	A,'D'	;; D for disable autoboot
+;;	STA	AUTOBOOT
+;;	JMP	ISERVATR	;;
+	
+
+;;MANCLOSE CALL	CLOSE
+;;	MVI	A,'E'
+;;	STA	AUTOBOOT	; ENABLE AUTO BOOT
+;;	JMP	ISERVATR
+	
+;;MANERA	CALL	GETNAME
+;;	CALL	DELETE
+;;	JMP	ISERVATR
+
+TCHECKER CALL	IPRINT
+	DB CR,LF,LF,'The total number of checksum errors is ',0
+	LHLD	TOTERRS
+	MOV	A,H
+	CALL	PUTHEX
+	MOV	A,L
+	CALL	PUTHEX
+	CALL	IPRINT
+ DB CR,LF,'I have recovered from these and no data was lost',0
+	JMP	ISERVATR
+
+LOGGER	CALL	IPRINT
+	DB CR,LF,'The drive I was using was ',0
+	LDA	DISKNUM
+	ADI	'A'
+	CALL	PUTCHAR
+	CALL	IPRINT
+ DB CR,LF,'Which drive you would like me to use (A to P)? ',0
+	CALL	GETCHAR
+	CPI	'A'
+	JC	LOGGER
+	CPI	'Q'
+	JNC	LOGGER
+	SUI	'A'
+	STA	DISKNUM
+	JMP	ISERVATR
+
+TSTRIP	LDA	STRIPPER+1 ; Toggle STRIPper
+	CPI	0FFH
+	JZ	WASNOTS
+	MVI	A,0FFH
+	STA	STRIPPER+1
+	JMP	ISERVATR
+
+WASNOTS MVI	A,7FH
+	STA	STRIPPER+1
+	JMP	ISERVATR
+
+
+GETNAME	PUSH B ! PUSH D ! PUSH H ;;This routine gets a filename
+	CALL	ZERROFCB ;; zero the values like sector number
+	CALL	CLEARFCB ;; put spaces where the file name goes
+	CALL	IPRINT
+	DB CR,LF,'Enter a filename. Up to 8 characters then'
+	DB CR,LF,'optionaly a period and 3 character filetype.'
+	DB CR,LF,0
+	MVI	A,14		;; Maximum number of characters
+	STA	STRINGBF	;; string buffer
+	CALL	INSTRING	;; Input a string
+	LXI	D,FCB+1
+	LXI	H,STRINGBF+2
+	LDA	STRINGBF+1	;; Number of characters entered
+	CPI	13
+	JC	OKSIZE		;; It should be less than 13
+	MVI	A,12		;; 12345678.012 = 12 characters
+OKSIZE	MOV	C,A		;; size/length of filename
+MMNAMEL MOV	A,M		;; Manual move name loop
+	INX	H	;;
+	CPI	'.'	;; period
+	JZ	FTYPE 	;;
+	STAX	D	;;
+	INX	D	;;
+	DCR	C
+	JNZ	MMNAMEL
+	JMP	DONEMOVE	;;
+FTYPE 	LXI	D,FCB+9	;;
+	DCR	C
+	JNZ	MMNAMEL
+DONEMOVE POP H ! POP D ! POP B
+	CALL	CAPNAME
+	RET
+
+MAKECAP CPI	60H	;; 'a'-1
+	RC		;; Return if less than 'a'
+	SUI	20H	;; 'A' + 20H = 'a'
+	RET
+
+INSTRING PUSH B ! PUSH D ! PUSH H
+	CALL	MAKEREAL
+	MVI	C,10
+	LXI	D,STRINGBF
+	CALL	BIOS
+	CALL	MAKEFAKE
+	POP H ! POP D ! POP B
+	RET
+
+STRINGBF DS	50
+
+ 	ENDM
+
+

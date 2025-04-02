@@ -1,0 +1,284 @@
+
+	VERTUOUS MACRO
+
+FORMAT	CALL	EAT3
+	CALL	ACK
+	CALL	DELETE
+	CALL	MAKEFILE
+	CALL	OPEN
+	CALL	ZERODMA
+	LXI	D,728	;; 90K FILE ATARI uses 1-720 I use 6
+	INR	D
+	LXI	H,1	;; Like ATARI we call first 1
+FORML1	CALL	RANWHL
+	JNZ	HEARDWRG	;; ERROR
+	INX	H
+	DCR	E
+	JNZ	FORML1
+	DCR	D
+	JNZ	FORML1
+	MVI	C,'C'	;; SEND COMPLETE
+	CALL	PUTC
+	MVI	A,0FFH
+	STA	80H
+	STA	81H	;; No bad sectors at all so far
+	CALL	SENDBUF
+	JMP	GETHI
+
+NOT20	CALL	IPRINT
+ DB CR,LF,'To use funtion V you must have CPM 2.0 or later'
+ DB CR,LF,'and this system does not.',0
+	JMP	MENU
+
+VERTUAL	MVI	C,12
+	CALL	BIOS
+	MOV     A,L
+	CPI	0
+	JZ	NOT20	;; NOT 2.0  or later
+	LDA	ISVON
+	CPI	'N'
+	JZ	VWASOFF
+WASVMODE CALL	IPRINT
+ DB CR,LF,'I was is virtual mode. Would you like me to end'
+ DB CR,LF,'virtual mode or change which file I use a a disk?'
+ DB CR,LF,'(E for End or C for Change.)',0
+	CALL	GETCHAR
+	CPI	'E'
+	JZ	ENDVMODE
+	CPI	'C'
+	JNZ	WASVMODE
+	CALL	CLOSE
+VWASOFF	CALL	IPRINT
+ DB CR,LF,'What is the name of the file you would like me to '
+ DB CR,LF,'use as a disk?.',0
+	CALL	GETNAME	;; Get a file name from console to FCB
+	CALL	CRLF	;;
+	CALL	INITFILE ;;
+	MVI	C,17	;; DOES FILE EXIST?
+	LXI	D,FCB	;;
+	CALL	BIOS	;;
+	CPI	255	;;
+	JNZ	VOREXIST ;; 255 = NO MATCH, SO NOT 255 = EXISTS
+	CALL	IPRINT
+ DB CR,LF,'This file did not exist and has not been formated'
+ DB CR,LF,'Be sure to use the ATARI format command',0
+	CALL	MAKEFILE
+	CALL	OPEN
+	CALL	ZERODMA
+	LXI	H,721
+	CALL	RANWHL
+	JZ	WHICHD
+	CALL	IPRINT
+ DB CR,LF,'Error in writing sector 721 in this new file'
+ DB CR,LF,'There must not be room on the disk',0
+	JMP	MENU	;;	******************	
+
+RANWHL	PUSH H ! PUSH B ! PUSH D
+	DCX	H
+	SHLD    FCB+33
+	MVI	C,22H
+	LXI	D,FCB
+	XRA	A
+	STA	FCB+35
+;;LXI	D,729
+;;CALL	CMPHLDE	;; Sets conditions of HL-DE
+;;JNC	BADRNDW	;; BAD RANDOM WRITE
+	CALL	BIOS
+	CPI	0
+	POP D ! POP B ! POP H
+	RET
+
+RANRHL	PUSH B ! PUSH D ! PUSH H
+	DCX	H
+	SHLD	FCB+33
+	MVI	C,21H
+	LXI	D,FCB
+	XRA	A
+	STA	FCB+35
+;;LXI	D,729
+;;CALL	CMPHLDE	;; Sets conditions of HL-DE
+;;JNC	BADRNDW	;; BAD RANDOM WRITE
+	CALL	BIOS
+	CPI	0
+	POP H ! POP D ! POP B
+	RET
+	
+ZERODMA	PUSH B ! PUSH H
+ 	MVI	C,128	
+	LXI	H,80H
+DATA0	MVI	M,0
+	INX	H
+	DCR	C
+	JNZ	DATA0
+	POP H ! POP B
+	RET	
+
+VOREXIST CALL	OPEN
+WHICHD	XRA	A
+	STA	FCB+35
+	CALL	IPRINT
+ DB CR,LF,'Which disk number 1-4 would you like this to be?',0
+	CALL	GETCHAR
+	CPI	'5'
+	JNC	WHICHD
+	CPI	'1'
+	JC	WHICHD
+	STA	DISKDRV+1
+	LXI	H,VDISK
+	SHLD	GODISK+1
+	MVI	A,'Y'
+	STA	ISVON
+	CALL	LEARNBAD
+	JMP	ISERVATR
+
+ENDVMODE CALL	CLOSE
+	MVI	A,'N'
+	STA	ISVON
+	MVI	A,'1'
+	STA	DISKDRV+1
+	LXI	H,DISK
+	SHLD	GODISK+1
+	JMP	ISERVATR
+
+ISVON	DB	'N'
+
+VDISK	CALL	GETA
+	CALL	ADDCHKSM
+	IF HOME
+	STA	DISPLAY+2
+	ENDIF
+	CPI	'R'	;; READ
+	JZ	VREAD
+	CPI	'W'	;; WRITE = PUT WITH VERIFY
+	JZ	VWRITE
+	CPI	'S'	;; STATUS
+	JZ	VSTATUS
+	CPI	'P'	;; PUT
+	JZ	VWRITE
+	CPI	'!'	;; FORMAT
+	JZ	FORMAT
+	LDA	NUMLOST
+	ADI	2
+	STA	NUMLOST
+	JMP	GETHI
+
+ACKVALID ;;LDA	DAUX2	;; HIGH
+	;;CPI	3	;; AUX2-3 should have to carry
+ 	LHLD	DAUX1
+	LXI	D,728
+	CALL	CMPHLDE
+	JC	ACK	;; It should be less than 728!
+	JMP	NAK
+;;	IF HOME
+;;	MVI	A,'N'
+;;	STA	DISPLAY-4
+;;	ENDIF
+;;	MVI	B,9
+;;	CALL	DLY100
+;;	MVI	C,'A'
+;;	CALL	PUTC
+;;	MVI	B,3
+;;	CALL	DLY100
+;;	RTS
+
+VREAD	CALL	EAT3
+	CALL	ACKVALID	
+	CALL	ISOKSEC
+	LHLD	DAUX1
+	CALL	RANRHL
+	JNZ	HEARDWRG
+	MVI	C,'C'
+	CALL	PUTC
+	CALL	SENDBUF
+	JMP	GETHI	
+
+VWRITE	CALL	EAT3
+	CALL	ACKVALID
+	CALL	RECBUF
+	LHLD	DAUX1
+	CALL	RANWHL
+	JNZ	WWRITEP
+	MVI	C,'C'
+	CALL	PUTC
+	JMP	GETHI	
+BADRNDW EQU $
+	IF DEBUGS
+	MVI	A,1
+	STA	TYPEOPEN
+	CALL	RSTATREP
+	ENDIF
+	JMP	HEARDWRG
+
+WWRITEP EQU  $
+	IF	DEBUGS
+	CALL	PUTHEX
+	CALL	IPRINT
+ DB CR,LF,'	was in the A reg after random file error'
+ DB CR,LF,'I tried to write at record .',0
+	LHLD	DAUX1
+	CALL	PUTHL
+	CALL	CRLF
+	ENDIF
+	JMP	HEARDWRG
+
+VSTATUS CALL	EAT3
+	CALL	ACK
+	LXI	D,STATMSG
+	CALL	SENDSTR
+	JMP	GETHI
+
+LEARNBAD LXI	H,721
+	LXI	D,BADSECS	
+	MVI	C,6
+LEARNCRV CALL	RANRHL
+	JNZ	CANTLEAR
+
+CHEET	CALL	DMATODE
+	PUSH	H
+	LXI	H,128
+	DAD	D
+	XCHG		;; DE=DE+128
+	POP	H
+	INX	H	;; next sector
+	DCR	C	;; Is that six yet?
+	JNZ	LEARNCRV
+	RET
+
+CANTLEAR CALL	ZERODMA
+	CALL	RANWHL
+	JZ	CHEET
+	CPI	4
+	JZ	CHEET
+	CPI	5
+	JZ	DIRFULL
+	CALL	IPRINT
+ DB CR,LF,'I could not read sector 721 or write sector 721.'
+ DB CR,LF,'The disk may be full.',0
+	JMP	MENU
+
+DIRFULL CALL	IPRINT
+ DB CR,LF,'The dirrectory is full I can not open a new extent'
+ DB 0
+	JMP	MENU
+
+DMATODE PUSH B ! PUSH D ! PUSH H
+	LXI	B,128
+	LXI	H,80H
+	CALL	BMOVER
+	POP H ! POP D ! POP B
+	RET
+
+ISOKSEC	LXI	D,BADSECS
+	LHLD	DAUX1
+	DAD	D
+	MOV	A,M
+	CPI	0
+	RZ
+	JMP	HEARDWRG	;; I say its bad!
+
+BADSECS DS	129*6	;; 
+
+ ENDM
+
+
+

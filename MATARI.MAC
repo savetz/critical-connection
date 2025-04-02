@@ -1,0 +1,243 @@
+
+
+	ASEG
+	ORG		100H
+
+TRUE	EQU	0FFFFH
+FALSE	EQU	NOT TRUE
+HOME	EQU	FALSE  ; False when for other systems
+DEBUGS	EQU	FALSE
+AKEYBD	EQU	TRUE
+KEYS	EQU	FALSE
+KEYK	EQU	TRUE 
+DEBUG2	EQU	FALSE
+DISPLAY EQU	0E930H
+
+
+	IF NOT	HOME
+	JMP	IMINSTAL ; The installer will NOP this jump
+	ENDIF
+
+	CALL	IPRINT
+ DB CR,LF,'      COPYRIGHT (C) 1982 by Vincent Cate.'
+ DB CR,LF,'      All rights reserved.'
+ DB CR,LF
+ DB CR,LF,'If you find any reproducable bugs please call'
+ DB CR,LF,'Vincent Cate at (408) 997-0264.'
+ DB CR,LF,0
+
+	LXI	SP,STACKTOP ;	
+	CALL	GETDNUM ; Record what disk was in use
+	CALL	SIZEMEM ;Find out how much memory is available
+ IF	HOME		; ***** Next 2 lines only on our system
+	MVI	A,40H
+	STA	14H
+ ENDIF		; ***** End of pequliarity
+	CALL	INITKEY
+
+ISERVATR: LDA	ISKEYON
+	CPI	'Y'
+	JZ	HITCRAT
+	CALL	IPRINT
+	DB CR,LF,LF,'I am now serving the ATARI.'
+	DB CR,LF,'Hit any key to see menu.',CR,LF,0
+	JMP	GETHI
+HITCRAT: CALL	IPRINT
+ DB CR,LF,'I am now serving the ATARI.'
+ DB CR,LF,'Hit RETURN then the at sign @ to get menu.',CR,LF,0
+			; JMP GETHI
+			;
+GETHI:	LXI	SP,STACKTOP
+	CALL	ASTATIN
+	ORA	A
+	JNZ	ASPEEKS ; When Atari SPEEKS we listen!!
+
+	CALL	PSTAT
+	ORA	A
+	CNZ	NONEWB ;CALL because used from allfull also
+
+	CALL	ASTATIN
+	ORA	A
+	JNZ	ASPEEKS ; When Atari SPEEKS we listen!!
+
+	CALL	CONST	;; my copy
+	ORA	A	; 0 is no characters entered
+	CNZ	BEENHIT ;A key has been hit. What does he want
+			; CALLed because aslo used in GETPUT
+ 	JMP	GETHI	; round and round we go where we stop..
+
+ASPEEKS: XRA	A
+	STA	CHECKSUM ; So far the checksum is 0
+	CALL	GETA
+	CALL	ADDCHKSM ; 
+	PUSH	PSW
+	LDA	NUMLOST
+	CPI	20
+	JNC	IMLOST
+	POP	PSW
+	IF HOME
+	STA	DISPLAY
+	ENDIF
+	CPI	'K'
+	JZ	KEYBOARD
+DISKDRV: CPI	'1'	; We will be one drive at a time
+GODISK:	JZ	DISK	; Changed when not supposed to be disk
+	CPI	'1'	; Other drives ignored
+	JZ	RDISK
+	CPI	'2'
+	JZ	RDISK
+	CPI	'3'
+	JZ	RDISK
+	CPI	'4'
+	JZ	RDISK
+
+	CPI	40H	;	or the printer?
+GOPRINT:	JZ	PRINTER
+	LXI	H,NUMLOST
+	INR	M	;; Increment NUMLOST
+	JMP	GETHI	; go around again
+			;
+			;
+EXIT:	LDA	ISRECON
+	CPI	'N'
+	JZ	EXIT2
+	JMP	NORMPRIN ;; Wish I could call it insted of JMP
+			;; Now to exit with divert on
+			;; someone will have to hit X twice
+EXIT2:	LDA	TYPEOPEN	; Did we read or write a file?
+	CPI	0		; 0 for not open
+	JZ	EXIT3
+	CALL	CLOSE	; so not 0 (1 or 2) is open so close it
+EXIT3:	CALL	MAKEREAL
+	JMP	0	; 
+			;
+DISK: 	CALL	GETA	; What does it want the DISK to do?
+	CALL	ADDCHKSM
+	IF	HOME
+	STA	DISPLAY+2
+	ENDIF
+	CPI	'S'	;
+	JZ	STATUS	; give computer a status report
+	CPI	'W'	;
+	JZ	GET128	; IT WANTS TO WRITE SO GET A SECTOR
+	CPI	'R'	;
+	JZ	SEND128 
+	LXI	H,NUMLOST
+	INR	M	;; Increment NUMLOST
+	JMP	GETHI	; only 3 commands for files
+			;
+			;
+STATUS:	CALL	EAT3	; This puts first 2 into DAUX1 and 2
+	CALL	ACK	; 
+	LXI	D,STATMSG
+	CALL	SENDSTR ; We say we are fine
+	LDA	DAUX2	;
+	CPI	'C'	; C for close
+	JZ	ACLOSE	;
+	CPI	'S'	;
+	JZ	GETHI	;
+	IF HOME
+	MVI	A,'S'
+	CALL	PUTCHAR
+	ENDIF
+	LXI	H,NUMLOST
+	INR	M	;; Increment NUMLOST
+	JMP	GETHI	; 
+
+ACLOSE:	CALL	CLOSE
+	MVI	C,'C'
+	CALL	PUTC
+	JMP	GETHI
+
+IMLOST:	POP	PSW
+	LXI	H,LAST5
+	MOV	M,A
+	MVI	A,1
+	STA	NUMOF5
+LETSSINC: CALL	ASTATIN
+	JZ	LETSSINC
+	CALL	AIN
+	LXI	H,LAST5+4
+	MOV	M,A
+	LDA	NUMOF5
+	INR	A
+	STA	NUMOF5
+	CPI	5
+	JNC	GOT5	;; 5       or   more??????
+MOV4DWN: LXI	H,LAST5+1
+	LXI	D,LAST5
+	LXI	B,4
+	CALL	BMOVER
+	IF HOME
+	MVI	A,'L'
+	STA	DISPLAY-2
+	ENDIF
+	JMP	LETSSINC
+GOT5:	XRA	A
+	STA	CHECKSUM
+	LXI	H,LAST5+4
+	MOV	B,M	;; possibly the sum sent
+	DCX	H
+	MVI	C,4
+ADD4:	MOV	A,M
+	CALL	ADDCHKSM
+	DCX	H
+	DCR	C
+	JNZ	ADD4
+	LDA	CHECKSUM
+	CMP	B	;; do other 4 add up to last one?
+	JZ	IMSUNK
+	MVI	A,4
+	STA	NUMOF5
+	JMP	MOV4DWN
+IMSUNK:	XRA	A
+	STA	NUMLOST
+	IF HOME
+	MVI	A,' '
+	STA	DISPLAY-2
+	ENDIF
+	JMP	GETHI
+
+NUMOF5: DB 0
+LAST5:	DB 0,0,0,0,0,0
+
+
+
+
+STATMSG: DB 'C',10H,0FFH,0EFH,0,0FFH,'$' ; Just like real disk
+
+INCLUDE LIBATARI
+INCLUDE SENDBOOT
+INCLUDE BOOTBOTH
+INCLUDE PRINTER
+INCLUDE RECORD
+INCLUDE GETPUT
+INCLUDE FILES
+INCLUDE MAPED
+INCLUDE OPTIONS
+INCLUDE GENIO
+INCLUDE KEYBD
+
+	 DS	0F0H	; Enough and to spare
+	IF HOME
+STACKTOP: DW	STACKERR-1
+STACKERR: CALL	IPRINT
+ DB CR,LF,LF,LF,'1 to maney returns !!!!!!!!!',0
+	JMP	GETHI
+	ENDIF
+	IF NOT HOME
+STACKTOP: DW	GETHI
+	ENDIF
+	IF NOT HOME
+INCLUDE INSTALL	; The lable DATA is in this
+INCLUDE INSTALL2 ; let user do it all
+	ENDIF
+
+	IF HOME
+DEVICE:	DB	0
+DATA:	DB	0
+	ENDIF
+
+	END	100H
+
+

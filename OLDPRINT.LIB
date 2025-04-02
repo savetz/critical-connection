@@ -1,0 +1,76 @@
+
+
+PMACS MACRO
+			;
+PRINTER CALL   GETA	; What does it want the printer to do?
+	CPI    53H
+        JZ     PSTATUS	; give computer a status report
+        CPI    57H
+        JZ     APRINT	; We get to print a line
+        JMP    GETHI	; There are only 2 commands?!?!
+APRINT  CALL   EAT3	; 2 dumby bytes and a checksum
+	CALL   ACK	; ACKnoledge
+ 	LXI    H,PRINTBUF ; The pointer to the begining of data
+ 	MVI    B,41	; There are 40 characters plus a cheksm
+GETLINE	CALL   GETA
+	MOV    M,A
+	INX    H
+	DCR    B
+	JNZ    GETLINE
+        CALL   ACK
+	CALL   LPRINT40 ; PRINT THE BUFFER
+        MVI    C,'C'	; C for commplete
+        CALL   PUTC	; Send complete
+ 	JMP    GETHI	; It sends a command for each line
+			;
+PSTATUS CALL   EAT3	; 2 dumby bytes and a checksum
+        CALL   ACK
+	LXI    D,PSTATMSG
+        CALL   SENDSTR  ; We say we are a printer
+        JMP    GETHI	; After a status command is print comd
+			;
+LPRINT40 LXI   H,PRINTBUF ; The start of the data
+	MVI    B,40	;
+LLOOP   MOV    A,M	; Get the byte to print
+	CPI    9BH	; Atari end of line
+	JZ     LPRINEOL	; LPRINT END OF LINE
+	CPI    1BH	; 1BH = 9BH - 80H  (Lost 8 bit in EOL)
+	JZ     LPRINEOL	; LPRINT END OF LINE
+	MOV    E,A
+	CALL   LPRINT
+	INX    H	; next byte
+	DCR    B	; we have printed one
+	JNZ    LLOOP    ; if there is more
+	LDA    HALFNUM	; Only 80 characters per line
+	INR    A	; If we have gotten to this line
+	STA    HALFNUM	;   it has been at 40 chars since we
+	CPI    2	;   checked to see if we had 80
+	JZ     LPRINEOL	; If we have 80 lprint CR LF and 0 hlfn
+	RET
+
+LPRINEOL MVI   E,CR
+	CALL   LPRINT
+	MVI    E,LF
+	CALL   LPRINT
+	MVI    A,0
+	STA    HALFNUM
+	RET
+			; 
+LPRINT 	PUSH   H ! PUSH B ! PUSH D 
+	MVI    C,5
+	CALL   BIOS
+	POP    D ! POP    B ! POP  H 
+	RET
+
+NONEWB  JMP   GETHI	; SO that this can be interchanged with
+			;    the buffered printer libarary
+			;
+HALFNUM  DB 0 		; 0,1 OR 2    0 IS NEWLINE 1 IS 40 2=80
+			;
+PSTATMSG DB  'C',0,0,0FFH,0,0FFH,'$'
+			;
+PRINTBUF DS   41	; This is where the data will be stored
+ ENDM
+
+
+

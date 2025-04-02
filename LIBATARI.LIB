@@ -1,0 +1,296 @@
+
+
+AMACS MACRO
+
+
+CR	EQU	0DH	;; Carriage return
+LF	EQU	0AH	;; Line feen
+BIOS	EQU	05H	;; For calls to bios
+
+		;; Now for some very general subroutines
+			;;
+CLS	MVI	A,1AH	;; 
+	CALL	PUTCHAR
+	RET
+			;;
+			;;
+PRINT	PUSH H ! PUSH D ! PUSH B
+	MVI	C,9	;;PRINT BUFFER FUNCTION
+	CALL	05H
+	POP B ! POP D ! POP H
+	RET
+			;;
+GETCHAR	PUSH H ! PUSH D ! PUSH B
+;;	MVI	C,1
+;;	CALL	MAKEREAL
+;;GETCLOP	MVI	C,6
+;;	MVI	E,0FFH
+;;;	CALL	BIOS
+;;	ORA	A
+;;	JZ	GETCLOP
+;;	CALL	MAKEFAKE
+GETCLOP	CALL	DIRECTIN
+	ORA	A
+	JZ	GETCLOP
+;;	MVI	C,2
+;;	MOV	E,A	;; Char to display
+;;	CALL	BIOS
+	PUSH	PSW
+	CALL	PUTCHAR
+	POP	PSW
+	CALL	MAKECAP
+	POP B ! POP D ! POP H
+	RET
+			;;
+PUTCHAR PUSH H ! PUSH D ! PUSH B	
+	MVI	C,2
+	MOV	E,A
+	CALL	BIOS
+	POP	B ! POP D ! POP H
+	RET
+			;;
+CRLF	MVI	A,CR	
+	CALL	PUTCHAR
+	MVI	A,LF	
+	CALL	PUTCHAR
+	RET
+
+PUTHEX	PUSH	PSW
+	RRC
+	RRC
+	RRC
+	RRC
+	CALL	PNIB
+	POP	PSW
+	CALL	PNIB
+	RET
+PNIB	ANI	0FH
+	CPI	10
+	JNC	P10
+	ADI	'0'
+	JMP	PRN
+P10	ADI	'A' - 10
+PRN	CALL	PUTCHAR
+	RET
+			;;
+GETHEX	PUSH B		;; gets a hex number from the consol
+			;; and returns it in the A reg
+GETAGAIN CALL	GETNIB
+	RLC
+	RLC
+	RLC
+	RLC
+	MOV	B,A
+	CALL	GETNIB
+	ADD	B
+	POP	B
+	RET
+GETNIB	CALL	GETCHAR
+	SUI	'0'
+	CPI	10
+	RC			;; It is less than 10
+	SUI	'A'-'0'-10
+	CPI	10H
+	RC		;; It is less than 16
+	CALL	IPRINT
+	DB CR,LF,'Bad input! Please enter 2 hex characters. ',0
+	POP	B	;; This destroys the return that was on
+			;; the stack - start all over both nibs
+	JMP	GETAGAIN ;; so we can jump to do it again and 
+			;;	return
+			;;
+SENDSTR PUSH D 
+SNDLOOP LDAX	D
+	CPI	'$'	;; Terminate with a $
+	JZ	DONESEND
+	MOV	C,A
+	CALL	PUTC
+	INX	D
+	JMP	SNDLOOP
+DONESEND POP D
+	 RET
+
+EAT3	PUSH	B
+	CALL	GETA
+	CALL	ADDCHKSM
+	STA	DAUX1
+	IF	HOME
+	STA	DISPLAY+4
+	ENDIF
+	CALL	GETA
+	CALL	ADDCHKSM
+	STA	DAUX2
+	IF	HOME
+	STA	DISPLAY+6
+	ENDIF
+	CALL	GETA	;; Sent check sum
+	IF	HOME
+	STA	DISPLAY+8
+	ENDIF
+	MOV	C,A
+	LDA	CHECKSUM	;; Calculated checksum
+	CMP	C	;; Are they the same?
+	JNZ	BADSUM	;; If not then abort
+	XRA	A
+	STA	NUMLOST	;; We are on top of things here!
+	POP	B
+	RET
+
+BADSUM	LDA	NUMLOST
+	ADI	3
+	STA	NUMLOST
+	JMP	GETHI
+
+NUMLOST DB 0
+
+DLY100	PUSH	B	;; This subroutine delays 100*B ms
+DLYL1	MVI	C,17
+DLYL2	DCR	C
+	JNZ	DLYL2
+	DCR	B
+	JNZ	DLYL1
+	POP	B
+	RET 		;;
+			;; 
+			;;
+PUTC	PUSH H ! PUSH D ! PUSH B
+	MOV	A,C	;; Get the byte to send
+	IF HOME
+	CMA
+	ENDIF
+	IF NOT HOME
+NOPN1	NOP
+	ENDIF
+	PUSH	PSW
+WAITOUT CALL	ASTATOUT ;; 0 is busy
+	ORA	A
+	JZ	WAITOUT
+	POP	PSW
+	CALL	AOUT
+	POP B ! POP D ! POP H
+	RET
+
+			;;			
+GETA	PUSH H ! PUSH D ! PUSH B
+
+WAITIN	CALL	ASTATIN	 ;; Sets condition codes
+	ORA	A
+	JNZ	BUFINFUL
+	LHLD	TIMEOUT
+	INX	H
+	SHLD	TIMEOUT
+	MVI	A,4	;; I know that 2 was not too short
+	CMP	H	;; of a timout for a 4 MGZ system
+	JNC	WAITIN
+	JMP	GETHI	
+
+BUFINFUL LXI	H,0
+	SHLD	TIMEOUT
+ 	CALL	AIN
+	IF	HOME
+	CMA		;; The atari bits are inverted so flip
+	ENDIF
+	IF	NOT HOME
+NOPN2	NOP
+	ENDIF
+	POP B ! POP D ! POP H
+	RET
+
+TIMEOUT DW 0000
+
+
+BEENHIT JMP	HITME	;; MAY NOT ALWAYS JUMP TO NEXT LINE
+HITME	CALL	GETCHAR	;; clear the keyboard
+	JMP	MENU	;; What does he want to do?
+
+			;;
+			;;
+
+;;KBDSTAT PUSH	H ! PUSH B ! PUSH D
+;;	MVI	C,11
+;;	CALL	BIOS
+;;	POP	D ! POP B ! POP H
+;;	RET 
+			;;
+ADDCHKSM PUSH PSW ! PUSH B
+	MOV	B,A
+	LDA	CHECKSUM
+	ADD	B		;; A=A+B	and set carry
+	MVI	B,0	;;
+	ADC	B		;; add in the carry 
+	STA	CHECKSUM 
+	POP	B ! POP PSW	
+	RET
+
+NAK	MVI	B,10
+	CALL	DLY100
+	MVI	C,'N'	;; N for not NAK
+	CALL	PUTC
+	JMP	GETHI
+
+ACK	PUSH	B
+	MVI	B,10
+	CALL	DLY100
+	MVI	C,'A'	;;A for not ACK
+	CALL	PUTC
+	MVI	B,3
+	CALL	DLY100
+	POP	B
+	IF HOME
+	LDA	DISPLAY-4
+	INR	A
+	STA	DISPLAY-4
+	ENDIF
+	RET
+			;;
+HEARDWRG PUSH	B
+	MVI	B,10
+	CALL	DLY100
+	MVI	C,'E'	;; E for not ERROR
+	LHLD	TOTERRS
+	INX	H
+	SHLD	TOTERRS
+	JMP	GETHI	;; ABORTED SOMETHING BUT STACK IS RESET
+
+TOTERRS DW	0000	;; 0 check sum errors so far today
+
+IPRINT	XTHL		;; Imediate PRINT
+IPRINL	MOV	A,M
+	ORA	A
+	JZ	IPRINRET
+	CALL	PUTCHAR
+	INX	H
+	JMP	IPRINL
+IPRINRET XTHL
+	RET
+
+CAPNAME	PUSH B ! PUSH D ! PUSH H
+	LXI	H,FCB+1
+	MVI	C,11	;; 8+3
+CAPLOOP MOV	A,M
+	CALL	MAKECAP
+	MOV	M,A
+	INX	H
+	DCR	C
+	JNZ	CAPLOOP
+	POP	H ! POP D ! POP B
+	RET
+
+PUTHL	MOV	A,H
+	CALL	PUTHEX
+	MOV	A,L
+	CALL	PUTHEX
+	RET
+			;;
+DAUX1	DB	0
+DAUX2	 DB	0
+CHECKSUM DB	0	;; What we calculated the sum to be
+
+ATARITBL	DB 0E3H,0F9H,4,8,3,0E3H,0F8H
+
+PRINTTBL	DB 7FH,0,0,1,0,7EH,0
+
+ 	ENDM
+
+
+
