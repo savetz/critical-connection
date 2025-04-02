@@ -6,6 +6,9 @@ Critical Connection was a combination of a specialized cable and software for co
 Features of the Critical Connection: use an entire CP/M floppy disk as an emulated 600K Atari disk drive, create 92KB CP/M disk files which emulated Atari 90KB disks, and print from the Atari to the CP/M computer's printer (the CP/M machine even acted as a print spooler), use the CP/M machine's keyboard to type on the Atari.
 
 My interview with Vince: https://www.youtube.com/watch?v=5xfe-CJ6BM0
+
 Vince's web site: http://www.offshore.com.ai/vince/
+
 Vince in Wikipedia: https://en.wikipedia.org/wiki/Vince_Cate
+
 Critical Connection review in A.N.A.L.O.G. magazine 1986-02: https://archive.org/details/analog-computing-magazine-39/page/n112/mode/1up
