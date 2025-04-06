@@ -1,5 +1,6 @@
 # Critical Connection for Atari 8-bit and CP/M
 Source code for Critical Collection, software/hardware for connecting an Atari 8-bit to a CP/M machine
+![Critical Connection advertisment from the December 1983 issue of Microsystems magzaine. "Improved CP/M to Atari Interface - only $175"](critical-connection-ad.png)
 
 Critical Connection was a combination of a specialized cable and software for connecting an Atari 8-bit to a computer running CP/M. The long cable had an SIO plug on one end and a 25-pin serial port on the other, and some chips in the middle, allowing the Atari and CP/M box to communicate at 19,200 bps. It was created by Vince Cate, who sent me the source code on 8" floppy disk, and has released the code under the MIT license. The disk is dated September 4, 1982.
 
